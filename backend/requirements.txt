@@ -3,3 +3,4 @@ uvicorn[standard]
 dspy
 python-multipart
 python-dotenv
+google-search-results

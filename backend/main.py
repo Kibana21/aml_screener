@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from api.alerts import router as alerts_router
 from api.screening import router as screening_router
+from api.negative_news import router as negative_news_router
 
 load_dotenv()
 
@@ -22,6 +23,7 @@ app.add_middleware(
 
 app.include_router(alerts_router)
 app.include_router(screening_router)
+app.include_router(negative_news_router)
 
 
 @app.on_event("startup")
