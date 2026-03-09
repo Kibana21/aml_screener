@@ -362,10 +362,10 @@ function NegativeNewsPanel() {
     setScreening(false);
   };
 
-  const riskColors = { HIGH: "#D31145", MEDIUM: "#EF6C00", LOW: "#1565C0", CLEAR: "#2E7D32" };
-  const riskBg = { HIGH: "rgba(211,17,69,0.08)", MEDIUM: "rgba(239,108,0,0.08)", LOW: "rgba(21,101,192,0.08)", CLEAR: "rgba(46,125,50,0.08)" };
+  const riskColors = { HIGH: "#C62828", MEDIUM: "#EF6C00", LOW: "#1565C0", CLEAR: "#2E7D32" };
+  const riskBg = { HIGH: "#FCE4EC", MEDIUM: "#FFF3E0", LOW: "#E3F2FD", CLEAR: "#E8F5E9" };
   const riskIcons = { HIGH: "\u{1F534}", MEDIUM: "\u{1F7E1}", LOW: "\u{1F535}", CLEAR: "\u{1F7E2}" };
-  const sevColors = { HIGH: { bg: "rgba(211,17,69,0.08)", color: "#D31145" }, MEDIUM: { bg: "rgba(239,108,0,0.08)", color: "#EF6C00" }, LOW: { bg: "rgba(21,101,192,0.08)", color: "#1565C0" }, CLEAR: { bg: "rgba(46,125,50,0.08)", color: "#2E7D32" } };
+  const sevColors = { HIGH: { bg: "#FCE4EC", color: "#C62828" }, MEDIUM: { bg: "#FFF3E0", color: "#EF6C00" }, LOW: { bg: "#E3F2FD", color: "#1565C0" }, CLEAR: { bg: "#E8F5E9", color: "#2E7D32" } };
 
   return (
     <>
@@ -558,7 +558,7 @@ function NegativeNewsPanel() {
                           <div key={i} className="nn-finding inconclusive">
                             <div className="nn-finding-header">
                               <span className="nn-finding-title">{f.article_title}</span>
-                              <span className="nn-sev-badge" style={{ color: "#EF6C00", background: "rgba(239,108,0,0.08)" }}>INCONCLUSIVE</span>
+                              <span className="nn-sev-badge" style={{ color: "#EF6C00", background: "#FFF3E0", borderColor: "#FFCC80" }}>INCONCLUSIVE</span>
                             </div>
                             <div className="nn-finding-meta"><span>{f.article_source}</span><span className="dot-sep" /><span>Confidence: {(f.match_confidence * 100).toFixed(0)}%</span></div>
                             <div className="reasoning-box"><p>{f.key_facts || f.match_reasoning}</p></div>
@@ -697,9 +697,9 @@ function getScoreColor(score) {
 
 function getDecisionStyle(decision) {
   if (!decision) return {};
-  if (decision.includes("True")) return { bg: "rgba(211,17,69,0.08)", color: "#D31145", border: "rgba(211,17,69,0.2)" };
-  if (decision.includes("Hold")) return { bg: "rgba(239,108,0,0.08)", color: "#EF6C00", border: "rgba(239,108,0,0.2)" };
-  return { bg: "rgba(46,125,50,0.08)", color: "#2E7D32", border: "rgba(46,125,50,0.2)" };
+  if (decision.includes("True")) return { bg: "#FCE4EC", color: "#C62828", border: "#EF9A9A" };
+  if (decision.includes("Hold")) return { bg: "#FFF3E0", color: "#EF6C00", border: "#FFCC80" };
+  return { bg: "#E8F5E9", color: "#2E7D32", border: "#A5D6A7" };
 }
 
 function isHighRisk(listId) {
