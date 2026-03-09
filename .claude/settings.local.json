@@ -1,7 +1,9 @@
 {
   "permissions": {
     "allow": [
-      "Bash(npx create-react-app:*)"
+      "Bash(npx create-react-app:*)",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }
