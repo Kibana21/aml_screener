@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx create-react-app:*)",
       "WebFetch(domain:github.com)",
-      "WebFetch(domain:raw.githubusercontent.com)"
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npm install:*)"
     ]
   }
 }
