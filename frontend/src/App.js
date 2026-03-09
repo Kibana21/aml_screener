@@ -402,7 +402,7 @@ function NegativeNewsPanel() {
             <div className="form-field"><label>Notes</label><textarea value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} placeholder="Extra context for disambiguation" rows={2} /></div>
             <div className="form-field"><label>Articles per Query</label>
               <select value={topN} onChange={e => setTopN(Number(e.target.value))}>
-                <option value={3}>3 articles</option><option value={5}>5 articles</option><option value={10}>10 articles</option><option value={15}>15 articles</option><option value={20}>20 articles</option>
+                <option value={1}>1 article</option><option value={2}>2 articles</option><option value={3}>3 articles</option><option value={5}>5 articles</option><option value={10}>10 articles</option><option value={15}>15 articles</option><option value={20}>20 articles</option>
               </select>
             </div>
             <button onClick={runScreening} disabled={screening} className="btn-screen-all nn-submit">

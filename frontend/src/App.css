@@ -142,7 +142,7 @@ body {
   padding: 16px 16px 10px;
   display: flex; align-items: center; justify-content: space-between;
 }
-.sidebar-header h2 { font-size: 14px; font-weight: 600; }
+.sidebar-header h2 { font-size: 15px; font-weight: 700; color: #212121; }
 .alert-count {
   background: var(--bg-elevated); border-radius: 10px;
   padding: 1px 8px; font-size: 11px; font-weight: 600; color: var(--text-muted);
@@ -403,34 +403,44 @@ body {
    ============================================ */
 
 .nn-sidebar { overflow-y: auto; }
-.nn-form { padding: 14px 16px; border-bottom: 1px solid var(--border); }
-.nn-form h3 { font-size: 12px; font-weight: 600; color: var(--text-secondary); margin-bottom: 10px; }
-.form-field { margin-bottom: 8px; }
+.nn-form { padding: 16px; border-bottom: 2px solid #E0E0E0; background: linear-gradient(180deg, #FFFFFF 0%, #FAFAFA 100%); }
+.nn-form h3 {
+  font-size: 14px; font-weight: 700; color: #D31145; margin-bottom: 14px;
+  text-transform: uppercase; letter-spacing: 0.04em;
+  padding-bottom: 8px; border-bottom: 2px solid #FCE4EC;
+}
+.form-field { margin-bottom: 10px; }
 .form-field label {
-  display: block; font-size: 10px; font-weight: 600;
-  color: var(--text-muted); text-transform: uppercase;
-  letter-spacing: 0.5px; margin-bottom: 2px;
+  display: block; font-size: 10px; font-weight: 700;
+  color: #424242; text-transform: uppercase;
+  letter-spacing: 0.5px; margin-bottom: 4px;
 }
 .form-field input, .form-field select, .form-field textarea {
-  width: 100%; padding: 7px 10px; border: 1px solid var(--border);
-  border-radius: var(--radius-xs); font-size: 12px;
-  font-family: inherit; color: var(--text-primary);
-  background: var(--bg-elevated); transition: var(--transition);
+  width: 100%; padding: 9px 12px; border: 1.5px solid #BDBDBD;
+  border-radius: 4px; font-size: 13px;
+  font-family: inherit; color: #212121;
+  background: #FFFFFF; transition: var(--transition);
 }
 .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
-  outline: none; border-color: #D31145; box-shadow: 0 0 0 2px rgba(211,17,69,0.12);
+  outline: none; border-color: #D31145; box-shadow: 0 0 0 3px rgba(211,17,69,0.15);
+  background: #FFFBFC;
 }
-.form-field input::placeholder, .form-field textarea::placeholder { color: var(--text-muted); }
+.form-field input::placeholder, .form-field textarea::placeholder { color: #BDBDBD; }
 .form-field textarea { resize: vertical; }
-.form-field select { appearance: none; cursor: pointer; }
-.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.nn-submit { width: 100%; margin-top: 6px; justify-content: center; }
+.form-field select {
+  appearance: none; cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23616161' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 10px center;
+  padding-right: 30px;
+}
+.form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nn-submit { width: 100%; margin-top: 10px; justify-content: center; padding: 10px 16px; font-size: 14px; font-weight: 700; }
 
 .nn-history { padding: 10px 8px; }
 .nn-history h3 {
-  font-size: 10px; font-weight: 700; color: var(--text-muted);
+  font-size: 11px; font-weight: 700; color: #D31145;
   text-transform: uppercase; letter-spacing: 0.6px;
-  padding: 0 8px 6px;
+  padding: 4px 8px 8px; border-bottom: 1px solid #FCE4EC; margin-bottom: 4px;
 }
 
 /* Risk Badge */
