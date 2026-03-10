@@ -105,6 +105,7 @@ def parse_alert_xml(xml_path: str | Path) -> Alert:
         job_name=job_name,
         job_type=job_type,
         number_of_hits=number_of_hits,
+        source_file=Path(xml_path).stem,
         party=party,
         hits=hits,
     )

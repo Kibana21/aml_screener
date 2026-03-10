@@ -130,6 +130,7 @@ class Alert(BaseModel):
     job_name: str = ""
     job_type: str = ""
     number_of_hits: int = 0
+    source_file: str = ""
     party: Party = Field(default_factory=Party)
     hits: list[HitInfo] = Field(default_factory=list)
 

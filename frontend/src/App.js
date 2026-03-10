@@ -55,6 +55,9 @@ function NameScreeningPanel() {
   const [activeTab, setActiveTab] = useState("overview");
   const [expandedHit, setExpandedHit] = useState(null);
   const [error, setError] = useState("");
+  const [cachedNews, setCachedNews] = useState({});  // alert_key -> summary
+  const [newsResult, setNewsResult] = useState(null);
+  const [newsLoading, setNewsLoading] = useState(false);
 
   const loadAlerts = useCallback(async () => {
     setLoading(true);
@@ -67,9 +70,33 @@ function NameScreeningPanel() {
       if (data.length > 0 && !selectedAlert) selectAlert(data[0]);
     } catch { setError("Cannot connect to backend. Is the server running?"); }
     setLoading(false);
+    // Load cached news results
+    try {
+      const newsRes = await fetch(`${API}/api/negative-news/cached`);
+      const newsData = await newsRes.json();
+      setCachedNews(newsData);
+    } catch { /* ignore */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => { loadAlerts(); }, [loadAlerts]);
+
+  const loadNewsForAlert = async (sourceFile) => {
+    // Match by source filename (e.g., "alert_person1" matches key in screening_results.json)
+    const matchKey = sourceFile && cachedNews[sourceFile] ? sourceFile : null;
+    if (!matchKey) { setNewsResult(null); return; }
+    setNewsLoading(true);
+    try {
+      const res = await fetch(`${API}/api/negative-news/cached/${matchKey}`);
+      if (res.ok) {
+        const data = await res.json();
+        setNewsResult(data);
+      } else {
+        setNewsResult(null);
+      }
+    } catch { setNewsResult(null); }
+    setNewsLoading(false);
+  };
 
   const selectAlert = async (alert) => {
     setSelectedAlert(alert.alert_id);
@@ -171,9 +198,9 @@ function NameScreeningPanel() {
               </div>
 
               <div className="tabs">
-                {["overview", "hits", "results"].map(t => (
-                  <button key={t} className={`tab ${activeTab === t ? "active" : ""}`} onClick={() => setActiveTab(t)}>
-                    {t === "overview" ? "Overview" : t === "hits" ? `Hits (${hits.length})` : <>Results {hasResults && <span className="tab-badge">{Object.keys(results).length}</span>}</>}
+                {["overview", "hits", "results", "news"].map(t => (
+                  <button key={t} className={`tab ${activeTab === t ? "active" : ""}`} onClick={() => { setActiveTab(t); if (t === "news") loadNewsForAlert(alert?.source_file); }}>
+                    {t === "overview" ? "Overview" : t === "hits" ? `Hits (${hits.length})` : t === "results" ? <>Results {hasResults && <span className="tab-badge">{Object.keys(results).length}</span>}</> : "News Screening"}
                   </button>
                 ))}
               </div>
@@ -289,6 +316,16 @@ function NameScreeningPanel() {
                     )}
                   </div>
                 )}
+
+                {activeTab === "news" && (
+                  newsLoading ? (
+                    <div className="empty-state"><span className="spinner" style={{ width: 24, height: 24 }} /> <p>Loading news screening...</p></div>
+                  ) : newsResult ? (
+                    <NewsResultView result={newsResult} />
+                  ) : (
+                    <EmptyState icon="news" title="No news screening available" subtitle="No pre-screened negative news results found for this subject. Run batch screening or screen manually in the Negative News tab." />
+                  )
+                )}
               </div>
             </>
           )}
@@ -307,11 +344,16 @@ function NegativeNewsPanel() {
   const [screening, setScreening] = useState(false);
   const [result, setResult] = useState(null);
   const [history, setHistory] = useState([]);
-  const [selectedHistory, setSelectedHistory] = useState(null);
-  const [resultTab, setResultTab] = useState("summary");
+  const [cachedList, setCachedList] = useState({});
+  const [selectedItem, setSelectedItem] = useState(null);
   const [error, setError] = useState("");
 
-  useEffect(() => { fetchHistory(); }, []);
+  const riskColors = { HIGH: "#C62828", MEDIUM: "#EF6C00", LOW: "#1565C0", CLEAR: "#2E7D32" };
+
+  useEffect(() => {
+    fetchHistory();
+    fetchCached();
+  }, []);
 
   const fetchHistory = async () => {
     try {
@@ -321,13 +363,30 @@ function NegativeNewsPanel() {
     } catch { /* ignore */ }
   };
 
+  const fetchCached = async () => {
+    try {
+      const res = await fetch(`${API}/api/negative-news/cached`);
+      const data = await res.json();
+      setCachedList(data);
+    } catch { /* ignore */ }
+  };
+
   const loadHistoryItem = async (id) => {
     try {
       const res = await fetch(`${API}/api/negative-news/history/${id}`);
       const data = await res.json();
       setResult(data);
-      setResultTab("summary");
-      setSelectedHistory(id);
+      setSelectedItem(`history:${id}`);
+    } catch { setError("Failed to load result"); }
+  };
+
+  const loadCachedItem = async (key) => {
+    try {
+      const res = await fetch(`${API}/api/negative-news/cached/${key}`);
+      if (!res.ok) { setError("Failed to load cached result"); return; }
+      const data = await res.json();
+      setResult(data);
+      setSelectedItem(`cached:${key}`);
     } catch { setError("Failed to load result"); }
   };
 
@@ -340,9 +399,8 @@ function NegativeNewsPanel() {
     const profile = { ...form };
     if (profile.aliases) profile.aliases = profile.aliases.split(",").map(a => a.trim()).filter(Boolean);
     else profile.aliases = [];
-    // Remove empty optional fields
     Object.keys(profile).forEach(k => { if (!profile[k] || (Array.isArray(profile[k]) && profile[k].length === 0)) delete profile[k]; });
-    profile.full_name = form.full_name; // ensure not deleted
+    profile.full_name = form.full_name;
 
     try {
       const res = await fetch(`${API}/api/negative-news/screen`, {
@@ -353,8 +411,7 @@ function NegativeNewsPanel() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.detail || "Screening failed"); }
       const data = await res.json();
       setResult(data);
-      setResultTab("summary");
-      setSelectedHistory(data.screening_id);
+      setSelectedItem(`history:${data.screening_id}`);
       fetchHistory();
     } catch (err) {
       setError(err.message || "Screening failed");
@@ -362,22 +419,17 @@ function NegativeNewsPanel() {
     setScreening(false);
   };
 
-  const riskColors = { HIGH: "#C62828", MEDIUM: "#EF6C00", LOW: "#1565C0", CLEAR: "#2E7D32" };
-  const riskBg = { HIGH: "#FCE4EC", MEDIUM: "#FFF3E0", LOW: "#E3F2FD", CLEAR: "#E8F5E9" };
-  const riskIcons = { HIGH: "\u{1F534}", MEDIUM: "\u{1F7E1}", LOW: "\u{1F535}", CLEAR: "\u{1F7E2}" };
-  const sevColors = { HIGH: { bg: "#FCE4EC", color: "#C62828" }, MEDIUM: { bg: "#FFF3E0", color: "#EF6C00" }, LOW: { bg: "#E3F2FD", color: "#1565C0" }, CLEAR: { bg: "#E8F5E9", color: "#2E7D32" } };
+  const cachedEntries = Object.entries(cachedList).filter(([, v]) => !v.has_error);
 
   return (
     <>
       {error && <Toast message={error} onClose={() => setError("")} />}
       <div className="layout">
-        {/* Sidebar — History + Form */}
         <aside className="sidebar nn-sidebar">
           <div className="sidebar-header">
             <h2>Adverse Media</h2>
           </div>
 
-          {/* Subject Form */}
           <div className="nn-form">
             <h3>Screen a Subject</h3>
             <div className="form-field"><label>Full Name *</label><input value={form.full_name} onChange={e => setForm(f => ({ ...f, full_name: e.target.value }))} placeholder="e.g. John Tan Wei Ming" /></div>
@@ -410,12 +462,32 @@ function NegativeNewsPanel() {
             </button>
           </div>
 
-          {/* History */}
+          {/* Pre-screened Alerts */}
+          {cachedEntries.length > 0 && (
+            <div className="nn-history">
+              <h3>Pre-screened Alerts</h3>
+              {cachedEntries.map(([key, info]) => (
+                <div key={key} className={`alert-card ${selectedItem === `cached:${key}` ? "active" : ""}`} onClick={() => loadCachedItem(key)}>
+                  <div className="alert-card-top">
+                    <span className="alert-party-name">{info.full_name}</span>
+                    <span className="alert-score" style={{ color: riskColors[info.risk_rating] || "#717171" }}>{info.risk_score}</span>
+                  </div>
+                  <div className="alert-card-meta">
+                    <span style={{ color: riskColors[info.risk_rating] }}>{info.risk_rating}</span>
+                    <span className="dot-sep" />
+                    <span>{info.findings_count} finding{info.findings_count !== 1 ? "s" : ""}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Live History */}
           {history.length > 0 && (
             <div className="nn-history">
               <h3>Recent Screenings</h3>
               {history.map(h => (
-                <div key={h.screening_id} className={`alert-card ${selectedHistory === h.screening_id ? "active" : ""}`} onClick={() => loadHistoryItem(h.screening_id)}>
+                <div key={h.screening_id} className={`alert-card ${selectedItem === `history:${h.screening_id}` ? "active" : ""}`} onClick={() => loadHistoryItem(h.screening_id)}>
                   <div className="alert-card-top">
                     <span className="alert-party-name">{h.subject_name}</span>
                     <span className="alert-score" style={{ color: riskColors[h.risk_rating] || "#717171" }}>{h.risk_score}</span>
@@ -431,188 +503,196 @@ function NegativeNewsPanel() {
           )}
         </aside>
 
-        {/* Main Panel — Results */}
         <main className="main-panel">
           {!result ? (
-            <EmptyState icon="news" title="Run a negative news screening" subtitle="Fill in the subject profile on the left and click 'Run Screening' to search for adverse media" />
+            <EmptyState icon="news" title="Run a negative news screening" subtitle="Fill in the subject profile on the left and click 'Run Screening', or select a pre-screened alert" />
           ) : (
-            <div className="nn-result">
-              {/* Header */}
-              <div className="detail-header">
-                <div className="detail-header-left">
-                  <h1>{result.subject?.full_name}</h1>
-                  <div className="detail-header-tags">
-                    {result.subject?.nationality && <span className="tag">{result.subject.nationality}</span>}
-                    {result.subject?.employer && <span className="tag">{result.subject.employer}</span>}
-                    {result.subject?.country && <span className="tag">{result.subject.country}</span>}
-                  </div>
-                </div>
-                <div className="detail-header-right">
-                  <div className="risk-badge-large" style={{ background: riskBg[result.overall_risk_rating], color: riskColors[result.overall_risk_rating], borderColor: riskColors[result.overall_risk_rating] }}>
-                    <span className="risk-score-value">{result.overall_risk_score}</span>
-                    <span className="risk-score-label">{riskIcons[result.overall_risk_rating]} {result.overall_risk_rating}</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Action Banner */}
-              <div className="nn-action-banner" style={{ background: riskBg[result.overall_risk_rating], borderColor: riskColors[result.overall_risk_rating] }}>
-                <span className="nn-action-label">Recommended Action</span>
-                <span className="nn-action-text" style={{ color: riskColors[result.overall_risk_rating] }}>{result.recommended_action}</span>
-              </div>
-
-              {/* Stats Row */}
-              <div className="nn-stats">
-                <div className="stat"><span className="stat-value">{result.queries_executed?.length || 0}</span><span className="stat-label">Queries</span></div>
-                <div className="stat"><span className="stat-value">{result.total_articles_retrieved || 0}</span><span className="stat-label">Articles Found</span></div>
-                <div className="stat"><span className="stat-value">{result.matched_findings?.length || 0}</span><span className="stat-label">Matched</span></div>
-                <div className="stat"><span className="stat-value">{result.discarded_results?.length || 0}</span><span className="stat-label">Discarded</span></div>
-              </div>
-
-              {/* Tabbed Results */}
-              <div className="tabs">
-                {[
-                  { key: "summary", label: "Summary" },
-                  { key: "findings", label: `Findings (${(result.matched_findings?.length || 0) + (result.inconclusive_findings?.length || 0)})` },
-                  { key: "audit", label: "Audit Trail" },
-                ].map(t => (
-                  <button key={t.key} className={`tab ${resultTab === t.key ? "active" : ""}`} onClick={() => setResultTab(t.key)}>
-                    {t.label}
-                  </button>
-                ))}
-              </div>
-
-              <div className="tab-content">
-                {/* ---- SUMMARY TAB ---- */}
-                {resultTab === "summary" && (
-                  <>
-                    <div className="info-card">
-                      <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><h3>Risk Assessment</h3></div>
-                      <div className="reasoning-box"><p>{result.narrative}</p></div>
-                      {result.caveats && <div className="nn-caveats"><strong>Caveats:</strong> {result.caveats}</div>}
-                    </div>
-
-                    {result.risk_breakdown && (
-                      <div className="info-card">
-                        <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg><h3>Category Breakdown</h3></div>
-                        <div className="nn-breakdown">
-                          {Object.entries(result.risk_breakdown).map(([cat, info]) => (
-                            <div key={cat} className="nn-breakdown-row">
-                              <div className="nn-breakdown-left">
-                                <span className="nn-cat-name">{cat}</span>
-                                <span className="nn-cat-count">{info.incident_count} incident{info.incident_count !== 1 ? "s" : ""}</span>
-                              </div>
-                              <div className="nn-breakdown-bar-wrap">
-                                <div className="nn-breakdown-bar" style={{ width: info.severity === "CLEAR" ? "0%" : info.severity === "LOW" ? "25%" : info.severity === "MEDIUM" ? "55%" : "90%", background: (sevColors[info.severity] || sevColors.CLEAR).color }} />
-                              </div>
-                              <span className="nn-breakdown-sev" style={{ color: (sevColors[info.severity] || sevColors.CLEAR).color, background: (sevColors[info.severity] || sevColors.CLEAR).bg }}>{info.severity}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-
-                {/* ---- FINDINGS TAB ---- */}
-                {resultTab === "findings" && (
-                  <>
-                    {result.matched_findings?.length > 0 && (
-                      <div className="info-card">
-                        <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><h3>Matched Findings ({result.matched_findings.length})</h3></div>
-                        {result.matched_findings.map((f, i) => (
-                          <div key={i} className="nn-finding">
-                            <div className="nn-finding-header">
-                              <div>
-                                <span className="nn-finding-id">{f.finding_id}</span>
-                                <span className="nn-finding-title">{f.article_title}</span>
-                              </div>
-                              <span className="nn-sev-badge" style={{ color: (sevColors[f.severity] || sevColors.LOW).color, background: (sevColors[f.severity] || sevColors.LOW).bg }}>
-                                {f.severity}
-                              </span>
-                            </div>
-                            <div className="nn-finding-meta">
-                              <span>{f.article_source}</span>
-                              <span className="dot-sep" />
-                              <span>{f.article_date}</span>
-                              <span className="dot-sep" />
-                              <span>Confidence: {(f.match_confidence * 100).toFixed(0)}%</span>
-                              {f.is_duplicate && <span className="list-tag high">Duplicate of {f.duplicate_of}</span>}
-                            </div>
-                            {f.risk_categories?.length > 0 && (
-                              <div className="nn-finding-cats">{f.risk_categories.map((c, j) => <span key={j} className="cat-tag">{c}</span>)}</div>
-                            )}
-                            <div className="reasoning-box"><p>{f.key_facts}</p></div>
-                            <details className="nn-finding-details"><summary>Match reasoning</summary><p>{f.match_reasoning}</p></details>
-                            {f.article_url && <a href={f.article_url} target="_blank" rel="noopener noreferrer" className="nn-article-link">View article &rarr;</a>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {result.inconclusive_findings?.length > 0 && (
-                      <div className="info-card">
-                        <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><h3>Inconclusive ({result.inconclusive_findings.length})</h3></div>
-                        <p className="nn-inconclusive-note">These could not be confirmed or ruled out. They contribute to the risk score at reduced weight.</p>
-                        {result.inconclusive_findings.map((f, i) => (
-                          <div key={i} className="nn-finding inconclusive">
-                            <div className="nn-finding-header">
-                              <span className="nn-finding-title">{f.article_title}</span>
-                              <span className="nn-sev-badge" style={{ color: "#EF6C00", background: "#FFF3E0", borderColor: "#FFCC80" }}>INCONCLUSIVE</span>
-                            </div>
-                            <div className="nn-finding-meta"><span>{f.article_source}</span><span className="dot-sep" /><span>Confidence: {(f.match_confidence * 100).toFixed(0)}%</span></div>
-                            <div className="reasoning-box"><p>{f.key_facts || f.match_reasoning}</p></div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {!result.matched_findings?.length && !result.inconclusive_findings?.length && (
-                      <EmptyState icon="shield" title="No findings" subtitle="No adverse media findings were identified for this subject" />
-                    )}
-                  </>
-                )}
-
-                {/* ---- AUDIT TRAIL TAB ---- */}
-                {resultTab === "audit" && (
-                  <>
-                    <div className="info-card">
-                      <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><h3>Queries Executed ({result.queries_executed?.length || 0})</h3></div>
-                      <div className="nn-queries">
-                        {result.queries_executed?.map((q, i) => (
-                          <div key={i} className="nn-query-row">
-                            <span className="nn-query-id">{q.query_id}</span>
-                            <span className="nn-query-text">{q.query_text}</span>
-                            <span className="nn-query-count">{q.results_count} results</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-
-                    {result.discarded_results?.length > 0 && (
-                      <div className="info-card">
-                        <div className="info-card-header">
-                          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                          <h3>Discarded Results ({result.discarded_results.length})</h3>
-                        </div>
-                        <div className="nn-discarded-list">
-                          {result.discarded_results.map((d, i) => (
-                            <div key={i} className="nn-discarded-item">
-                              <span className="nn-discarded-title">{d.article_title}</span>
-                              <span className="nn-discarded-reason">{d.discard_reason}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </>
-                )}
-              </div>
-            </div>
+            <NewsResultView result={result} />
           )}
         </main>
       </div>
     </>
+  );
+}
+
+/* ================================================================
+   NEWS RESULT VIEW — Shared between Name Screening & Negative News
+   ================================================================ */
+function NewsResultView({ result }) {
+  const [resultTab, setResultTab] = useState("summary");
+  const riskColors = { HIGH: "#C62828", MEDIUM: "#EF6C00", LOW: "#1565C0", CLEAR: "#2E7D32" };
+  const riskBg = { HIGH: "#FCE4EC", MEDIUM: "#FFF3E0", LOW: "#E3F2FD", CLEAR: "#E8F5E9" };
+  const riskIcons = { HIGH: "\u{1F534}", MEDIUM: "\u{1F7E1}", LOW: "\u{1F535}", CLEAR: "\u{1F7E2}" };
+  const sevColors = { HIGH: { bg: "#FCE4EC", color: "#C62828" }, MEDIUM: { bg: "#FFF3E0", color: "#EF6C00" }, LOW: { bg: "#E3F2FD", color: "#1565C0" }, CLEAR: { bg: "#E8F5E9", color: "#2E7D32" } };
+
+  if (!result) return null;
+
+  return (
+    <div className="nn-result">
+      <div className="detail-header">
+        <div className="detail-header-left">
+          <h1>{result.subject?.full_name}</h1>
+          <div className="detail-header-tags">
+            {result.subject?.nationality && <span className="tag">{result.subject.nationality}</span>}
+            {result.subject?.employer && <span className="tag">{result.subject.employer}</span>}
+            {result.subject?.country && <span className="tag">{result.subject.country}</span>}
+          </div>
+        </div>
+        <div className="detail-header-right">
+          <div className="risk-badge-large" style={{ background: riskBg[result.overall_risk_rating], color: riskColors[result.overall_risk_rating], borderColor: riskColors[result.overall_risk_rating] }}>
+            <span className="risk-score-value">{result.overall_risk_score}</span>
+            <span className="risk-score-label">{riskIcons[result.overall_risk_rating]} {result.overall_risk_rating}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="nn-action-banner" style={{ background: riskBg[result.overall_risk_rating], borderColor: riskColors[result.overall_risk_rating] }}>
+        <span className="nn-action-label">Recommended Action</span>
+        <span className="nn-action-text" style={{ color: riskColors[result.overall_risk_rating] }}>{result.recommended_action}</span>
+      </div>
+
+      <div className="nn-stats">
+        <div className="stat"><span className="stat-value">{result.queries_executed?.length || 0}</span><span className="stat-label">Queries</span></div>
+        <div className="stat"><span className="stat-value">{result.total_articles_retrieved || 0}</span><span className="stat-label">Articles Found</span></div>
+        <div className="stat"><span className="stat-value">{result.matched_findings?.length || 0}</span><span className="stat-label">Matched</span></div>
+        <div className="stat"><span className="stat-value">{result.discarded_results?.length || 0}</span><span className="stat-label">Discarded</span></div>
+      </div>
+
+      <div className="tabs">
+        {[
+          { key: "summary", label: "Summary" },
+          { key: "findings", label: `Findings (${(result.matched_findings?.length || 0) + (result.inconclusive_findings?.length || 0)})` },
+          { key: "audit", label: "Audit Trail" },
+        ].map(t => (
+          <button key={t.key} className={`tab ${resultTab === t.key ? "active" : ""}`} onClick={() => setResultTab(t.key)}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="tab-content">
+        {resultTab === "summary" && (
+          <>
+            <div className="info-card">
+              <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><h3>Risk Assessment</h3></div>
+              <div className="reasoning-box"><p>{result.narrative}</p></div>
+              {result.caveats && <div className="nn-caveats"><strong>Caveats:</strong> {result.caveats}</div>}
+            </div>
+            {result.risk_breakdown && (
+              <div className="info-card">
+                <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg><h3>Category Breakdown</h3></div>
+                <div className="nn-breakdown">
+                  {Object.entries(result.risk_breakdown).map(([cat, info]) => (
+                    <div key={cat} className="nn-breakdown-row">
+                      <div className="nn-breakdown-left">
+                        <span className="nn-cat-name">{cat}</span>
+                        <span className="nn-cat-count">{info.incident_count} incident{info.incident_count !== 1 ? "s" : ""}</span>
+                      </div>
+                      <div className="nn-breakdown-bar-wrap">
+                        <div className="nn-breakdown-bar" style={{ width: info.severity === "CLEAR" ? "0%" : info.severity === "LOW" ? "25%" : info.severity === "MEDIUM" ? "55%" : "90%", background: (sevColors[info.severity] || sevColors.CLEAR).color }} />
+                      </div>
+                      <span className="nn-breakdown-sev" style={{ color: (sevColors[info.severity] || sevColors.CLEAR).color, background: (sevColors[info.severity] || sevColors.CLEAR).bg }}>{info.severity}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {resultTab === "findings" && (
+          <>
+            {result.matched_findings?.length > 0 && (
+              <div className="info-card">
+                <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg><h3>Matched Findings ({result.matched_findings.length})</h3></div>
+                {result.matched_findings.map((f, i) => (
+                  <div key={i} className="nn-finding">
+                    <div className="nn-finding-header">
+                      <div>
+                        <span className="nn-finding-id">{f.finding_id}</span>
+                        <span className="nn-finding-title">{f.article_title}</span>
+                      </div>
+                      <span className="nn-sev-badge" style={{ color: (sevColors[f.severity] || sevColors.LOW).color, background: (sevColors[f.severity] || sevColors.LOW).bg }}>
+                        {f.severity}
+                      </span>
+                    </div>
+                    <div className="nn-finding-meta">
+                      <span>{f.article_source}</span>
+                      <span className="dot-sep" />
+                      <span>{f.article_date}</span>
+                      <span className="dot-sep" />
+                      <span>Confidence: {(f.match_confidence * 100).toFixed(0)}%</span>
+                      {f.is_duplicate && <span className="list-tag high">Duplicate of {f.duplicate_of}</span>}
+                    </div>
+                    {f.risk_categories?.length > 0 && (
+                      <div className="nn-finding-cats">{f.risk_categories.map((c, j) => <span key={j} className="cat-tag">{c}</span>)}</div>
+                    )}
+                    <div className="reasoning-box"><p>{f.key_facts}</p></div>
+                    <details className="nn-finding-details"><summary>Match reasoning</summary><p>{f.match_reasoning}</p></details>
+                    {f.article_url && <a href={f.article_url} target="_blank" rel="noopener noreferrer" className="nn-article-link">View article &rarr;</a>}
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {result.inconclusive_findings?.length > 0 && (
+              <div className="info-card">
+                <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><h3>Inconclusive ({result.inconclusive_findings.length})</h3></div>
+                <p className="nn-inconclusive-note">These could not be confirmed or ruled out. They contribute to the risk score at reduced weight.</p>
+                {result.inconclusive_findings.map((f, i) => (
+                  <div key={i} className="nn-finding inconclusive">
+                    <div className="nn-finding-header">
+                      <span className="nn-finding-title">{f.article_title}</span>
+                      <span className="nn-sev-badge" style={{ color: "#EF6C00", background: "#FFF3E0", borderColor: "#FFCC80" }}>INCONCLUSIVE</span>
+                    </div>
+                    <div className="nn-finding-meta"><span>{f.article_source}</span><span className="dot-sep" /><span>Confidence: {(f.match_confidence * 100).toFixed(0)}%</span></div>
+                    <div className="reasoning-box"><p>{f.key_facts || f.match_reasoning}</p></div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            {!result.matched_findings?.length && !result.inconclusive_findings?.length && (
+              <EmptyState icon="shield" title="No findings" subtitle="No adverse media findings were identified for this subject" />
+            )}
+          </>
+        )}
+
+        {resultTab === "audit" && (
+          <>
+            <div className="info-card">
+              <div className="info-card-header"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><h3>Queries Executed ({result.queries_executed?.length || 0})</h3></div>
+              <div className="nn-queries">
+                {result.queries_executed?.map((q, i) => (
+                  <div key={i} className="nn-query-row">
+                    <span className="nn-query-id">{q.query_id}</span>
+                    <span className="nn-query-text">{q.query_text}</span>
+                    <span className="nn-query-count">{q.results_count} results</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {result.discarded_results?.length > 0 && (
+              <div className="info-card">
+                <div className="info-card-header">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                  <h3>Discarded Results ({result.discarded_results.length})</h3>
+                </div>
+                <div className="nn-discarded-list">
+                  {result.discarded_results.map((d, i) => (
+                    <div key={i} className="nn-discarded-item">
+                      <span className="nn-discarded-title">{d.article_title}</span>
+                      <span className="nn-discarded-reason">{d.discard_reason}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+      </div>
+    </div>
   );
 }
 
